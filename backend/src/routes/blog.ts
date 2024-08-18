@@ -13,7 +13,7 @@ export const blogRoutes = new Hono<{
   };
 }>();
 
-blogRoutes.use("/api/v1/blog/*", async (c, next) => {
+blogRoutes.use("/*", async (c, next) => {
   const jwt = c.req.header("Authorization");
 
   if (!jwt) {
@@ -31,24 +31,70 @@ blogRoutes.use("/api/v1/blog/*", async (c, next) => {
 
 blogRoutes.post("/", async (c) => {
   const body = await c.req.json();
+  const authorId = c.get("userId");
+  const prisma = new PrismaClient({
+    datasourceUrl: c.env.DATABASE_URL,
+  }).$extends(withAccelerate());
+  const blog = await prisma.blog.create({
+    data: {
+      title: body.title,
+      content: body.content,
+      authorId: authorId
+    },
+  });
+
+  return c.json({ blog});
+});
+
+blogRoutes.put("/update", async (c) => {
+  const userId = c.get("userId");
   const prisma = new PrismaClient({
     datasourceUrl: c.env.DATABASE_URL,
   }).$extends(withAccelerate());
 
-const blog =  await prisma.blog.create({
+  const body = await c.req.json();
+  prisma.blog.update({
+    where: {
+      id: body.id,
+      authorId: userId,
+    },
     data: {
       title: body.title,
       content: body.content,
-      authorId: "1",
     },
   });
+  return c.text("updated post");
+});
+blogRoutes.get("/get/:id", (c) => {
+  const id = c.req.param("id");
+  const prisma = new PrismaClient({
+    datasourceUrl: c.env?.DATABASE_URL,
+  }).$extends(withAccelerate());
 
-  return c.text("Hello Hono!");
+  const blog = prisma.blog.findUnique({
+    where: {
+      id,
+    },
+  });
+  return c.json(blog);
 });
 
-blogRoutes.put("/api/v1/blog", (c) => {
-  return c.text("Hello Hono!");
-});
-blogRoutes.get("/api/v1/blog/:id", (c) => {
-  return c.text("Hello Hono!");
+
+blogRoutes.get("/allblogs", async (c) => {
+  const prisma = new PrismaClient({
+    datasourceUrl: c.env?.DATABASE_URL,
+  }).$extends(withAccelerate());
+
+  try {
+    const blogs = await prisma.blog.findMany();
+    
+    if (!blogs || blogs.length === 0) {
+      return c.json({ message: "No blogs found." }, 404);
+    }
+    
+    return c.json(blogs);
+  } catch (error) {
+    console.error("Error fetching blogs:", error);
+    return c.json({ error: "Failed to retrieve blogs." }, 500);
+  }
 });
